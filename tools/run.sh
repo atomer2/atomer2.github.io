@@ -1,27 +1,68 @@
 #!/usr/bin/env bash
 #
-# Run jekyll serve and then launch the site
+# Run the local Jekyll preview server
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 prod=false
-command="bundle exec jekyll s -l"
-host="127.0.0.1"
+use_livereload=false
+host="0.0.0.0"
+port="4000"
+livereload_port="35729"
 
 help() {
   echo "Usage:"
   echo
-  echo "   bash /path/to/run [options]"
+  echo "   bash tools/run.sh [options]"
   echo
   echo "Options:"
-  echo "     -H, --host [HOST]    Host to bind to."
+  echo "     -H, --host [HOST]    Host to bind to. Default: 0.0.0.0"
+  echo "     -P, --port [PORT]    Port for the local site server."
+  echo "     -l, --livereload     Enable browser auto-refresh."
+  echo "         --lr-port [PORT] Port for the LiveReload server."
   echo "     -p, --production     Run Jekyll in 'production' mode."
   echo "     -h, --help           Print this help information."
 }
+
+if ! command -v ruby >/dev/null 2>&1; then
+  echo "Ruby is not installed."
+  echo "Install Ruby first, then run: bash tools/install.sh"
+  exit 1
+fi
+
+if ! command -v bundle >/dev/null 2>&1; then
+  echo "Bundler is not installed."
+  echo "Install Bundler first, then run: bash tools/install.sh"
+  exit 1
+fi
+
+cd "$ROOT_DIR"
+
+if ! bundle check >/dev/null 2>&1; then
+  echo "Project gems do not appear to be installed yet."
+  echo "Run: bash tools/install.sh"
+  exit 1
+fi
 
 while (($#)); do
   opt="$1"
   case $opt in
   -H | --host)
     host="$2"
+    shift 2
+    ;;
+  -P | --port)
+    port="$2"
+    shift 2
+    ;;
+  -l | --livereload)
+    use_livereload=true
+    shift
+    ;;
+  --lr-port)
+    livereload_port="$2"
     shift 2
     ;;
   -p | --production)
@@ -40,15 +81,22 @@ while (($#)); do
   esac
 done
 
-command="$command -H $host"
+cmd=(bundle exec jekyll s -H "$host" -P "$port")
+
+if $use_livereload; then
+  cmd+=(-l --livereload-port "$livereload_port")
+fi
 
 if $prod; then
-  command="JEKYLL_ENV=production $command"
+  export JEKYLL_ENV=production
 fi
 
 if [ -e /proc/1/cgroup ] && grep -q docker /proc/1/cgroup; then
-  command="$command --force_polling"
+  cmd+=(--force_polling)
 fi
 
-echo -e "\n> $command\n"
-eval "$command"
+printf "\n> "
+printf "%q " "${cmd[@]}"
+printf "\n\n"
+
+exec "${cmd[@]}"
